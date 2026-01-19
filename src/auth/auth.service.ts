@@ -17,7 +17,8 @@ export class AuthService {
 
   async signUp(signUpDto: SignUpDto) {
     // Verifica se o registro está habilitado
-    if (!this.settingsService.isRegistrationEnabled()) {
+    const registrationEnabled = await this.settingsService.isRegistrationEnabled();
+    if (!registrationEnabled) {
       throw new ForbiddenException(
         "O registro de novos usuários está desabilitado",
       );

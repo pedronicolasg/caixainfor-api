@@ -1,87 +1,118 @@
-import { Injectable, Logger } from "@nestjs/common";
-import * as fs from "fs";
-import * as path from "path";
-
-interface SettingsFile {
-  registrationEnabled: boolean;
-}
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { SupabaseService } from "../supabase/supabase.service";
 
 @Injectable()
-export class SettingsService {
-  private readonly settingsFilePath = path.join(process.cwd(), "settings.json");
+export class SettingsService implements OnModuleInit {
   private readonly logger = new Logger(SettingsService.name);
+  private readonly SETTINGS_KEY = "registration_enabled";
 
-  // Por padrão, registro está habilitado até que seja carregado do arquivo
-  private registrationEnabled = true;
+  constructor(private supabaseService: SupabaseService) {}
 
-  constructor() {
-    this.loadSettingsFromFile();
+  async onModuleInit() {
+    await this.ensureSettingsExists();
   }
 
-  private loadSettingsFromFile(): void {
+  private async ensureSettingsExists(): Promise<void> {
     try {
-      if (!fs.existsSync(this.settingsFilePath)) {
-        this.persistSettingsToFile();
-        return;
-      }
+      const supabase = this.supabaseService.getClient();
+      const { data, error } = await supabase
+        .from("settings")
+        .select("key")
+        .eq("key", this.SETTINGS_KEY)
+        .single();
 
-      const raw = fs.readFileSync(this.settingsFilePath, "utf-8");
-      const parsed = JSON.parse(raw) as Partial<SettingsFile>;
+      if (error && error.code === "PGRST116") {
+        const { error: insertError } = await supabase
+          .from("settings")
+          .insert({
+            key: this.SETTINGS_KEY,
+            value: true,
+          });
 
-      if (typeof parsed.registrationEnabled === "boolean") {
-        this.registrationEnabled = parsed.registrationEnabled;
-      } else {
-        this.persistSettingsToFile();
+        if (insertError) {
+          this.logger.error(
+            `Erro ao criar configuração padrão: ${insertError.message}`,
+          );
+        }
       }
     } catch (error) {
       this.logger.error(
-        "Erro ao carregar configurações de registro, usando valor padrão em memória.",
+        "Erro ao verificar/criar configurações no banco de dados.",
         (error as Error).stack,
       );
     }
   }
 
-  private persistSettingsToFile(): void {
+  async isRegistrationEnabled(): Promise<boolean> {
     try {
-      const data: SettingsFile = {
-        registrationEnabled: this.registrationEnabled,
-      };
+      const supabase = this.supabaseService.getClient();
+      const { data, error } = await supabase
+        .from("settings")
+        .select("value")
+        .eq("key", this.SETTINGS_KEY)
+        .single();
 
-      fs.writeFileSync(
-        this.settingsFilePath,
-        JSON.stringify(data, null, 2),
-        "utf-8",
-      );
+      if (error) {
+        this.logger.error(
+          `Erro ao buscar configuração de registro: ${error.message}`,
+        );
+        return true;
+      }
+
+      return data?.value === true || data?.value === "true";
     } catch (error) {
       this.logger.error(
-        "Erro ao salvar configurações de registro no arquivo.",
+        "Erro ao verificar status de registro.",
         (error as Error).stack,
       );
+      return true;
     }
   }
 
-  isRegistrationEnabled(): boolean {
-    return this.registrationEnabled;
+  async enableRegistration(): Promise<void> {
+    await this.setRegistrationEnabled(true);
   }
 
-  enableRegistration(): void {
-    this.registrationEnabled = true;
-    this.persistSettingsToFile();
+  async disableRegistration(): Promise<void> {
+    await this.setRegistrationEnabled(false);
   }
 
-  disableRegistration(): void {
-    this.registrationEnabled = false;
-    this.persistSettingsToFile();
+  async toggleRegistration(): Promise<boolean> {
+    const currentStatus = await this.isRegistrationEnabled();
+    const newStatus = !currentStatus;
+    await this.setRegistrationEnabled(newStatus);
+    return newStatus;
   }
 
-  toggleRegistration(): boolean {
-    this.registrationEnabled = !this.registrationEnabled;
-    this.persistSettingsToFile();
-    return this.registrationEnabled;
-  }
+  async setRegistrationEnabled(enabled: boolean): Promise<void> {
+    try {
+      const supabase = this.supabaseService.getClient();
+      const { error } = await supabase
+        .from("settings")
+        .upsert(
+          {
+            key: this.SETTINGS_KEY,
+            value: enabled,
+          },
+          {
+            onConflict: "key",
+          },
+        );
 
-  setRegistrationEnabled(enabled: boolean): void {
-    this.registrationEnabled = enabled;
-    this.persistSettingsToFile();
+      if (error) {
+        this.logger.error(
+          `Erro ao atualizar configuração de registro: ${error.message}`,
+        );
+        throw new Error(
+          `Falha ao atualizar configuração: ${error.message}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        "Erro ao salvar configuração de registro no banco de dados.",
+        (error as Error).stack,
+      );
+      throw error;
+    }
   }
 }

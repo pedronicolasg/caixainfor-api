@@ -17,24 +17,25 @@ export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
   @Get("registration")
-  getRegistrationStatus() {
+  async getRegistrationStatus() {
+    const enabled = await this.settingsService.isRegistrationEnabled();
     return {
-      enabled: this.settingsService.isRegistrationEnabled(),
+      enabled,
     };
   }
 
   @Post("registration/toggle")
   @HttpCode(HttpStatus.OK)
-  toggleRegistration(@Body() toggleDto: ToggleRegistrationDto) {
+  async toggleRegistration(@Body() toggleDto: ToggleRegistrationDto) {
     if (toggleDto.enabled !== undefined) {
-      this.settingsService.setRegistrationEnabled(toggleDto.enabled);
+      await this.settingsService.setRegistrationEnabled(toggleDto.enabled);
       return {
         enabled: toggleDto.enabled,
         message: `Registro ${toggleDto.enabled ? "habilitado" : "desabilitado"}`,
       };
     }
 
-    const newState = this.settingsService.toggleRegistration();
+    const newState = await this.settingsService.toggleRegistration();
     return {
       enabled: newState,
       message: `Registro ${newState ? "habilitado" : "desabilitado"}`,
