@@ -12,6 +12,7 @@ logs
 .c9/
 *.launch
 .settings/
+settings.json
 *.sublime-workspace
 .vscode/*
 !.vscode/settings.json

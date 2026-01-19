@@ -4,6 +4,7 @@ import { SupabaseModule } from "./supabase/supabase.module";
 import { AuthModule } from "./auth/auth.module";
 import { TransactionsModule } from "./transactions/transactions.module";
 import { SettingsModule } from "./settings/settings.module";
+import { AppController } from "./app.controller";
 
 @Module({
   imports: [
@@ -16,5 +17,6 @@ import { SettingsModule } from "./settings/settings.module";
     TransactionsModule,
     SettingsModule,
   ],
+  controllers: [AppController],
 })
 export class AppModule {}
